@@ -313,6 +313,14 @@
   }
   .thumb:hover { opacity: 0.85; }
   .thumb.active { opacity: 1; border-color: var(--accent); }
+  .thumb-placeholder {
+    width: 48px; height: 64px;
+    background: #2a2a2a;
+    border: 2px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    opacity: 0.4;
+  }
 
   /* Loading overlay */
   #loading {
@@ -496,61 +504,111 @@ dropZone.addEventListener('drop', e => {
 dropFrame.addEventListener('click', () => document.getElementById('file-input').click());
 
 // ─── LOAD CBZ ───
+let zipEntries = [];
+
 async function loadCBZ(file) {
   showLoading(true, 'Leyendo archivo…', 0);
   try {
-    const zip = await JSZip.loadAsync(file, {
-      onProgress: p => {
-        const pct = Math.round((p.percent || 0) * 0.4);
-        showLoading(true, 'Descomprimiendo…', pct);
-      }
-    });
+    // Read as ArrayBuffer first — required for Safari/iOS compatibility
+    const arrayBuffer = await readFileAsArrayBuffer(file);
+    showLoading(true, 'Descomprimiendo…', 20);
+
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    showLoading(true, 'Buscando imágenes…', 50);
 
     const imageExts = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
     const entries = Object.values(zip.files)
       .filter(f => !f.dir && imageExts.test(f.name))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 
-    if (!entries.length) { alert('No se encontraron imágenes en el archivo.'); showLoading(false); return; }
+    if (!entries.length) {
+      showLoading(false);
+      alert('No se encontraron imágenes en el archivo.\nAségþrate de que es un archivo .cbz válido.');
+      return;
+    }
 
-    pages = [];
+    zipEntries = entries;
+    pages = new Array(entries.length).fill(null);
+
     const thumbStrip = document.getElementById('thumb-strip');
     thumbStrip.innerHTML = '';
-
     for (let i = 0; i < entries.length; i++) {
-      const pct = 40 + Math.round((i / entries.length) * 60);
-      showLoading(true, `Procesando página ${i+1} de ${entries.length}…`, pct);
-      const blob = await entries[i].async('blob');
-      const url = URL.createObjectURL(blob);
-      pages.push(url);
-
-      // thumbnail
-      const img = document.createElement('img');
-      img.src = url;
-      img.className = 'thumb';
-      img.dataset.page = i;
-      img.title = `Página ${i+1}`;
-      img.addEventListener('click', () => goToPage(i));
-      thumbStrip.appendChild(img);
+      const ph = document.createElement('div');
+      ph.className = 'thumb thumb-placeholder';
+      ph.dataset.page = i;
+      ph.title = `Página ${i+1}`;
+      ph.addEventListener('click', () => goToPage(i));
+      thumbStrip.appendChild(ph);
     }
 
     document.getElementById('comic-title').textContent = file.name.replace(/\.cbz$/i,'').replace(/_/g,' ');
-    document.getElementById('total-pages').textContent = pages.length;
+    document.getElementById('total-pages').textContent = entries.length;
 
     showLoading(false);
     document.getElementById('drop-zone').style.display = 'none';
     document.getElementById('reader').classList.add('active');
     document.getElementById('kb-hint').style.display = 'block';
     currentPage = 0;
+
+    await preloadPages(0, Math.min(3, entries.length - 1));
     renderPage();
+
   } catch (err) {
     showLoading(false);
-    alert('Error al leer el archivo: ' + err.message);
+    alert('Error al abrir el archivo:\n' + err.message);
+    console.error(err);
+  }
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function guessMime(filename) {
+  if (/\.png$/i.test(filename)) return 'image/png';
+  if (/\.gif$/i.test(filename)) return 'image/gif';
+  if (/\.webp$/i.test(filename)) return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function preloadPages(from, to) {
+  for (let i = from; i <= to; i++) {
+    if (pages[i] === null && zipEntries[i]) {
+      try {
+        const blob = await zipEntries[i].async('blob');
+        const mimeType = guessMime(zipEntries[i].name);
+        const typedBlob = new Blob([blob], { type: mimeType });
+        pages[i] = URL.createObjectURL(typedBlob);
+
+        const thumbEl = document.querySelector(`[data-page="${i}"]`);
+        if (thumbEl && thumbEl.tagName !== 'IMG') {
+          const img = document.createElement('img');
+          img.src = pages[i];
+          img.className = 'thumb' + (i === currentPage ? ' active' : '');
+          img.dataset.page = i;
+          img.title = `Página ${i+1}`;
+          img.addEventListener('click', () => goToPage(i));
+          thumbEl.replaceWith(img);
+        }
+      } catch(e) {
+        console.warn('Error loading page', i, e);
+        pages[i] = '';
+      }
+    }
   }
 }
 
 // ─── RENDER ───
-function renderPage() {
+async function renderPage() {
+  // Ensure current pages are loaded
+  const step = viewMode === 'double' ? 2 : 1;
+  await preloadPages(currentPage, Math.min(currentPage + step + 2, pages.length - 1));
+
   const area = document.getElementById('reading-area');
   area.innerHTML = '';
 
@@ -562,16 +620,23 @@ function renderPage() {
     const wrap = document.createElement('div');
     wrap.className = 'page-wrap';
 
-    const img = document.createElement('img');
-    img.src = pages[pi];
-    img.alt = `Página ${pi + 1}`;
-    applyZoom(img);
+    if (pages[pi]) {
+      const img = document.createElement('img');
+      img.src = pages[pi];
+      img.alt = `Página ${pi + 1}`;
+      applyZoom(img);
+      wrap.appendChild(img);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.style.cssText = 'width:400px;height:560px;display:flex;align-items:center;justify-content:center;color:#444;font-size:0.8rem;letter-spacing:2px;';
+      placeholder.textContent = 'CARGANDO…';
+      wrap.appendChild(placeholder);
+    }
 
     const badge = document.createElement('div');
     badge.className = 'page-badge';
     badge.textContent = `Página ${pi + 1}`;
 
-    wrap.appendChild(img);
     wrap.appendChild(badge);
     area.appendChild(wrap);
   });
