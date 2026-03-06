@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CBZ Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --ink: #0a0a0a;
+    --paper: #f0ebe0;
+    --accent: #e63312;
+    --accent2: #f5a623;
+    --muted: #8a8070;
+    --panel-bg: #1a1a1a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── HALFTONE BACKGROUND ─── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px);
+    background-size: 20px 20px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 3px solid var(--accent);
+    background: var(--ink);
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem;
+    letter-spacing: 4px;
+    color: var(--paper);
+    line-height: 1;
+  }
+  .logo span { color: var(--accent); }
+
+  .header-info {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.6;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ─── DROP ZONE ─── */
+  #drop-zone {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 80px);
+    gap: 24px;
+    padding: 40px;
+    transition: all 0.2s;
+  }
+
+  .drop-frame {
+    border: 3px dashed var(--accent);
+    padding: 60px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(230,51,18,0.04);
+  }
+  .drop-frame::before, .drop-frame::after {
+    content: '';
+    position: absolute;
+    width: 24px; height: 24px;
+    border-color: var(--accent2);
+    border-style: solid;
+  }
+  .drop-frame::before { top: -3px; left: -3px; border-width: 3px 0 0 3px; }
+  .drop-frame::after  { bottom: -3px; right: -3px; border-width: 0 3px 3px 0; }
+
+  .drop-frame:hover, .drop-frame.dragging {
+    background: rgba(230,51,18,0.10);
+    border-color: var(--accent2);
+  }
+
+  .drop-icon {
+    font-size: 4rem;
+    line-height: 1;
+    filter: grayscale(0.2);
+  }
+
+  .drop-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 3px;
+    color: var(--paper);
+  }
+
+  .drop-sub {
+    font-size: 0.7rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+
+  .btn-open {
+    background: var(--accent);
+    color: var(--paper);
+    border: none;
+    padding: 12px 32px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.2rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  }
+  .btn-open:hover { background: var(--accent2); color: var(--ink); transform: scale(1.04); }
+
+  #file-input { display: none; }
+
+  /* ─── READER ─── */
+  #reader {
+    display: none;
+    position: relative;
+    z-index: 10;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  #reader.active { display: flex; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: var(--panel-bg);
+    border-bottom: 2px solid #2a2a2a;
+    flex-wrap: wrap;
+  }
+
+  .comic-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    color: var(--accent);
+    flex: 1;
+    min-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .page-counter {
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 1px;
+  }
+  .page-counter strong { color: var(--paper); }
+
+  .tb-btn {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: var(--paper);
+    width: 36px; height: 36px;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .tb-btn:hover { background: var(--accent); border-color: var(--accent); }
+  .tb-btn:disabled { opacity: 0.3; cursor: default; }
+  .tb-btn:disabled:hover { background: #2a2a2a; border-color: #3a3a3a; }
+
+  .tb-separator { width: 1px; height: 24px; background: #3a3a3a; flex-shrink: 0; }
+
+  /* Zoom selector */
+  .zoom-select {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: var(--paper);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    padding: 6px 8px;
+    cursor: pointer;
+  }
+
+  /* View mode */
+  .mode-btn {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: var(--muted);
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+
+  /* Main reading area */
+  .reading-area {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+    gap: 12px;
+    background: #111;
+    position: relative;
+  }
+
+  .page-wrap {
+    position: relative;
+    flex-shrink: 0;
+    box-shadow: 6px 6px 0 var(--accent), 0 0 40px rgba(0,0,0,0.8);
+  }
+
+  .page-wrap img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    image-rendering: high-quality;
+  }
+
+  /* Page number badge */
+  .page-badge {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Navigation overlays */
+  .nav-overlay {
+    position: fixed;
+    top: 80px; bottom: 0;
+    width: 80px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    z-index: 20;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .nav-overlay:hover { opacity: 1; }
+  .nav-overlay.left { left: 0; background: linear-gradient(to right, rgba(230,51,18,0.25), transparent); }
+  .nav-overlay.right { right: 0; background: linear-gradient(to left, rgba(230,51,18,0.25), transparent); }
+  .nav-arrow {
+    font-size: 2rem;
+    color: var(--paper);
+    text-shadow: 0 0 10px var(--accent);
+  }
+
+  /* Thumbnail strip */
+  .thumb-strip {
+    background: var(--panel-bg);
+    border-top: 2px solid #2a2a2a;
+    padding: 8px 12px;
+    overflow-x: auto;
+    display: flex;
+    gap: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #1a1a1a;
+  }
+
+  .thumb {
+    flex-shrink: 0;
+    width: 48px; height: 64px;
+    object-fit: cover;
+    opacity: 0.5;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .thumb:hover { opacity: 0.85; }
+  .thumb.active { opacity: 1; border-color: var(--accent); }
+
+  /* Loading overlay */
+  #loading {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,10,0.92);
+    z-index: 100;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  #loading.show { display: flex; }
+
+  .loading-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 4px;
+    color: var(--accent);
+  }
+  .loading-bar-wrap {
+    width: 300px;
+    height: 6px;
+    background: #2a2a2a;
+    overflow: hidden;
+  }
+  .loading-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s;
+  }
+  .loading-msg {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Keyboard hint */
+  .kb-hint {
+    position: fixed;
+    bottom: 90px;
+    right: 16px;
+    z-index: 5;
+    font-size: 0.55rem;
+    color: #333;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    line-height: 2;
+    text-align: right;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #111; }
+  ::-webkit-scrollbar-thumb { background: var(--accent); }
+
+  @media (max-width: 600px) {
+    .drop-frame { padding: 32px 24px; }
+    header { padding: 12px 16px; }
+    .logo { font-size: 1.8rem; }
+    .toolbar { padding: 8px 12px; gap: 8px; }
+    .nav-overlay { width: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header>
+  <div class="logo">CBZ<span>.</span>Reader</div>
+  <div class="header-info">
+    Comic Book Archive Reader<br>
+    Drag &amp; Drop · Keyboard Nav
+  </div>
+</header>
+
+<!-- ─── DROP ZONE ─── -->
+<div id="drop-zone">
+  <div class="drop-frame" id="drop-frame">
+    <div class="drop-icon">📚</div>
+    <div class="drop-title">Abre tu cómic</div>
+    <div class="drop-sub">Arrastra un archivo .cbz aquí<br>o haz clic para seleccionar</div>
+    <button class="btn-open" onclick="document.getElementById('file-input').click()">Seleccionar archivo</button>
+  </div>
+  <input type="file" id="file-input" accept=".cbz,.zip">
+</div>
+
+<!-- ─── READER ─── -->
+<div id="reader">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="tb-btn" id="btn-back" title="Volver" onclick="closeComic()">✕</button>
+    <div class="tb-separator"></div>
+    <div class="comic-title" id="comic-title">—</div>
+    <div class="page-counter"><strong id="cur-page">1</strong> / <span id="total-pages">?</span></div>
+    <div class="tb-separator"></div>
+    <button class="tb-btn" id="btn-first" title="Primera página" onclick="goToPage(0)">⏮</button>
+    <button class="tb-btn" id="btn-prev" title="Anterior (←)" onclick="prevPage()">◀</button>
+    <button class="tb-btn" id="btn-next" title="Siguiente (→)" onclick="nextPage()">▶</button>
+    <button class="tb-btn" id="btn-last" title="Última página" onclick="goToPage(pages.length-1)">⏭</button>
+    <div class="tb-separator"></div>
+    <button class="mode-btn active" id="mode-single" onclick="setMode('single')">Una</button>
+    <button class="mode-btn" id="mode-double" onclick="setMode('double')">Dos</button>
+    <div class="tb-separator"></div>
+    <select class="zoom-select" id="zoom-select" onchange="setZoom(this.value)">
+      <option value="fit">Ajustar</option>
+      <option value="width">Ancho</option>
+      <option value="75">75%</option>
+      <option value="100" selected>100%</option>
+      <option value="125">125%</option>
+      <option value="150">150%</option>
+      <option value="200">200%</option>
+    </select>
+  </div>
+
+  <!-- Reading area -->
+  <div class="reading-area" id="reading-area">
+    <!-- pages render here -->
+  </div>
+
+  <!-- Navigation overlays -->
+  <div class="nav-overlay left" onclick="prevPage()"><div class="nav-arrow">‹</div></div>
+  <div class="nav-overlay right" onclick="nextPage()"><div class="nav-arrow">›</div></div>
+
+  <!-- Thumbnail strip -->
+  <div class="thumb-strip" id="thumb-strip"></div>
+</div>
+
+<!-- ─── LOADING ─── -->
+<div id="loading">
+  <div class="loading-title">Cargando cómic…</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+  <div class="loading-msg" id="loading-msg">Leyendo archivo…</div>
+</div>
+
+<!-- ─── KEYBOARD HINT ─── -->
+<div class="kb-hint" id="kb-hint" style="display:none">
+  ← → navegar<br>
+  Home / End primera / última
+</div>
+
+<script>
+let pages = [];
+let currentPage = 0;
+let viewMode = 'single';
+let zoomMode = '100';
+
+// ─── FILE INPUT ───
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) loadCBZ(e.target.files[0]);
+});
+
+// ─── DRAG & DROP ───
+const dropFrame = document.getElementById('drop-frame');
+const dropZone = document.getElementById('drop-zone');
+
+['dragenter','dragover'].forEach(ev => {
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropFrame.classList.add('dragging'); });
+});
+['dragleave','drop'].forEach(ev => {
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropFrame.classList.remove('dragging'); });
+});
+dropZone.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file) loadCBZ(file);
+});
+dropFrame.addEventListener('click', () => document.getElementById('file-input').click());
+
+// ─── LOAD CBZ ───
+async function loadCBZ(file) {
+  showLoading(true, 'Leyendo archivo…', 0);
+  try {
+    const zip = await JSZip.loadAsync(file, {
+      onProgress: p => {
+        const pct = Math.round((p.percent || 0) * 0.4);
+        showLoading(true, 'Descomprimiendo…', pct);
+      }
+    });
+
+    const imageExts = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
+    const entries = Object.values(zip.files)
+      .filter(f => !f.dir && imageExts.test(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+
+    if (!entries.length) { alert('No se encontraron imágenes en el archivo.'); showLoading(false); return; }
+
+    pages = [];
+    const thumbStrip = document.getElementById('thumb-strip');
+    thumbStrip.innerHTML = '';
+
+    for (let i = 0; i < entries.length; i++) {
+      const pct = 40 + Math.round((i / entries.length) * 60);
+      showLoading(true, `Procesando página ${i+1} de ${entries.length}…`, pct);
+      const blob = await entries[i].async('blob');
+      const url = URL.createObjectURL(blob);
+      pages.push(url);
+
+      // thumbnail
+      const img = document.createElement('img');
+      img.src = url;
+      img.className = 'thumb';
+      img.dataset.page = i;
+      img.title = `Página ${i+1}`;
+      img.addEventListener('click', () => goToPage(i));
+      thumbStrip.appendChild(img);
+    }
+
+    document.getElementById('comic-title').textContent = file.name.replace(/\.cbz$/i,'').replace(/_/g,' ');
+    document.getElementById('total-pages').textContent = pages.length;
+
+    showLoading(false);
+    document.getElementById('drop-zone').style.display = 'none';
+    document.getElementById('reader').classList.add('active');
+    document.getElementById('kb-hint').style.display = 'block';
+    currentPage = 0;
+    renderPage();
+  } catch (err) {
+    showLoading(false);
+    alert('Error al leer el archivo: ' + err.message);
+  }
+}
+
+// ─── RENDER ───
+function renderPage() {
+  const area = document.getElementById('reading-area');
+  area.innerHTML = '';
+
+  const pagesToShow = viewMode === 'double'
+    ? [currentPage, currentPage + 1].filter(i => i < pages.length)
+    : [currentPage];
+
+  pagesToShow.forEach((pi, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+
+    const img = document.createElement('img');
+    img.src = pages[pi];
+    img.alt = `Página ${pi + 1}`;
+    applyZoom(img);
+
+    const badge = document.createElement('div');
+    badge.className = 'page-badge';
+    badge.textContent = `Página ${pi + 1}`;
+
+    wrap.appendChild(img);
+    wrap.appendChild(badge);
+    area.appendChild(wrap);
+  });
+
+  area.scrollTop = 0;
+
+  // Update UI
+  document.getElementById('cur-page').textContent = currentPage + 1;
+  document.getElementById('btn-prev').disabled = currentPage === 0;
+  document.getElementById('btn-first').disabled = currentPage === 0;
+  document.getElementById('btn-next').disabled = currentPage >= pages.length - 1;
+  document.getElementById('btn-last').disabled = currentPage >= pages.length - 1;
+
+  // Thumbnails
+  document.querySelectorAll('.thumb').forEach(t => {
+    const pi = parseInt(t.dataset.page);
+    t.classList.toggle('active', pi === currentPage || (viewMode === 'double' && pi === currentPage + 1));
+  });
+
+  // Scroll thumb into view
+  const activeThumbs = document.querySelectorAll('.thumb.active');
+  if (activeThumbs[0]) activeThumbs[0].scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+}
+
+function applyZoom(img) {
+  if (zoomMode === 'fit') {
+    img.style.maxHeight = (window.innerHeight - 180) + 'px';
+    img.style.width = 'auto';
+    img.style.maxWidth = '100%';
+  } else if (zoomMode === 'width') {
+    img.style.width = '100%';
+    img.style.maxHeight = 'none';
+    img.style.maxWidth = 'none';
+  } else {
+    const pct = parseInt(zoomMode);
+    img.style.width = 'auto';
+    img.style.maxWidth = 'none';
+    img.style.maxHeight = 'none';
+    img.style.height = 'auto';
+    // Use a fixed base height approach
+    img.onload = () => {
+      img.style.width = Math.round(img.naturalWidth * pct / 100) + 'px';
+    };
+    if (img.complete && img.naturalWidth) {
+      img.style.width = Math.round(img.naturalWidth * pct / 100) + 'px';
+    }
+  }
+}
+
+// ─── NAVIGATION ───
+function nextPage() {
+  const step = viewMode === 'double' ? 2 : 1;
+  if (currentPage + step <= pages.length - 1) {
+    currentPage = Math.min(currentPage + step, pages.length - 1);
+    renderPage();
+  }
+}
+function prevPage() {
+  const step = viewMode === 'double' ? 2 : 1;
+  if (currentPage > 0) {
+    currentPage = Math.max(currentPage - step, 0);
+    renderPage();
+  }
+}
+function goToPage(i) {
+  currentPage = Math.max(0, Math.min(i, pages.length - 1));
+  renderPage();
+}
+
+// ─── MODE & ZOOM ───
+function setMode(m) {
+  viewMode = m;
+  document.getElementById('mode-single').classList.toggle('active', m === 'single');
+  document.getElementById('mode-double').classList.toggle('active', m === 'double');
+  renderPage();
+}
+function setZoom(v) {
+  zoomMode = v;
+  renderPage();
+}
+
+// ─── CLOSE ───
+function closeComic() {
+  pages.forEach(u => URL.revokeObjectURL(u));
+  pages = [];
+  document.getElementById('reader').classList.remove('active');
+  document.getElementById('drop-zone').style.display = 'flex';
+  document.getElementById('kb-hint').style.display = 'none';
+  document.getElementById('file-input').value = '';
+}
+
+// ─── LOADING ───
+function showLoading(show, msg = '', pct = 0) {
+  const el = document.getElementById('loading');
+  el.classList.toggle('show', show);
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading-bar').style.width = pct + '%';
+}
+
+// ─── KEYBOARD ───
+document.addEventListener('keydown', e => {
+  if (!pages.length) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextPage(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); prevPage(); }
+  if (e.key === 'Home') goToPage(0);
+  if (e.key === 'End')  goToPage(pages.length - 1);
+});
+</script>
+</body>
+</html>
