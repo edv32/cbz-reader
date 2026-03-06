@@ -478,13 +478,29 @@ let zoomMode = '100';
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 if (isIOS) {
   document.getElementById('ios-hint').style.display = 'block';
-  // On iOS, remove the accept filter so Files app shows all files
   document.getElementById('file-input').removeAttribute('accept');
+}
+
+// ─── DEBUG LOG (visible on screen) ───
+function dbg(msg) {
+  console.log(msg);
+  let box = document.getElementById('debug-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'debug-box';
+    box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#000;color:#0f0;font:11px monospace;padding:8px;max-height:40vh;overflow-y:auto;';
+    document.body.appendChild(box);
+  }
+  box.innerHTML += msg + '<br>';
+  box.scrollTop = box.scrollHeight;
 }
 
 // ─── FILE INPUT ───
 document.getElementById('file-input').addEventListener('change', e => {
-  if (e.target.files[0]) loadCBZ(e.target.files[0]);
+  const file = e.target.files[0];
+  if (!file) { dbg('ERROR: no file selected'); return; }
+  dbg('File: ' + file.name + ' | size: ' + file.size + ' | type: ' + (file.type || 'unknown'));
+  loadCBZ(file);
 });
 
 // ─── DRAG & DROP ───
@@ -508,22 +524,30 @@ let zipEntries = [];
 
 async function loadCBZ(file) {
   showLoading(true, 'Leyendo archivo…', 0);
+  dbg('loadCBZ start: ' + file.name);
   try {
-    // Read as ArrayBuffer first — required for Safari/iOS compatibility
+    dbg('Reading as ArrayBuffer...');
     const arrayBuffer = await readFileAsArrayBuffer(file);
+    dbg('ArrayBuffer size: ' + arrayBuffer.byteLength);
     showLoading(true, 'Descomprimiendo…', 20);
 
+    dbg('Passing to JSZip...');
     const zip = await JSZip.loadAsync(arrayBuffer);
+    dbg('JSZip loaded. Files: ' + Object.keys(zip.files).length);
     showLoading(true, 'Buscando imágenes…', 50);
 
     const imageExts = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
-    const entries = Object.values(zip.files)
+    const allFiles = Object.values(zip.files);
+    dbg('All entries: ' + allFiles.map(f => f.name).slice(0,5).join(', '));
+    const entries = allFiles
       .filter(f => !f.dir && imageExts.test(f.name))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 
+    dbg('Image entries found: ' + entries.length);
     if (!entries.length) {
       showLoading(false);
-      alert('No se encontraron imágenes en el archivo.\nAségþrate de que es un archivo .cbz válido.');
+      dbg('ERROR: no images found in zip');
+      alert('No se encontraron imágenes.\nArchivos en el zip: ' + allFiles.map(f=>f.name).join(', '));
       return;
     }
 
@@ -555,7 +579,8 @@ async function loadCBZ(file) {
 
   } catch (err) {
     showLoading(false);
-    alert('Error al abrir el archivo:\n' + err.message);
+    dbg('CATCH ERROR: ' + err.message + ' | ' + err.stack);
+    alert('Error: ' + err.message);
     console.error(err);
   }
 }
