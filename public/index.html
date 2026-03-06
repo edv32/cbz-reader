@@ -432,10 +432,10 @@
     <button class="mode-btn" id="mode-double" onclick="setMode('double')">Dos</button>
     <div class="tb-separator"></div>
     <select class="zoom-select" id="zoom-select" onchange="setZoom(this.value)">
-      <option value="fit">Ajustar</option>
+      <option value="fit" selected>Ajustar</option>
       <option value="width">Ancho</option>
       <option value="75">75%</option>
-      <option value="100" selected>100%</option>
+      <option value="100">100%</option>
       <option value="125">125%</option>
       <option value="150">150%</option>
       <option value="200">200%</option>
@@ -472,7 +472,7 @@
 let pages = [];
 let currentPage = 0;
 let viewMode = 'single';
-let zoomMode = '100';
+let zoomMode = 'fit';
 
 // ─── iOS DETECTION ───
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -481,26 +481,10 @@ if (isIOS) {
   // No accept filter on iOS - let user pick any file from Files app
 }
 
-// ─── DEBUG LOG (visible on screen) ───
-function dbg(msg) {
-  console.log(msg);
-  let box = document.getElementById('debug-box');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'debug-box';
-    box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#000;color:#0f0;font:11px monospace;padding:8px;max-height:40vh;overflow-y:auto;';
-    document.body.appendChild(box);
-  }
-  box.innerHTML += msg + '<br>';
-  box.scrollTop = box.scrollHeight;
-}
-
 // ─── FILE INPUT ───
 document.getElementById('file-input').addEventListener('change', e => {
   const file = e.target.files[0];
-  if (!file) { dbg('ERROR: no file selected'); return; }
-  dbg('File: ' + file.name + ' | size: ' + file.size + ' | type: ' + (file.type || 'unknown'));
-  loadCBZ(file);
+  if (file) loadCBZ(file);
 });
 
 // ─── DRAG & DROP ───
@@ -524,30 +508,21 @@ let zipEntries = [];
 
 async function loadCBZ(file) {
   showLoading(true, 'Leyendo archivo…', 0);
-  dbg('loadCBZ start: ' + file.name);
   try {
-    dbg('Reading as ArrayBuffer...');
-    const arrayBuffer = await readFileAsArrayBuffer(file);
-    dbg('ArrayBuffer size: ' + arrayBuffer.byteLength);
-    showLoading(true, 'Descomprimiendo…', 20);
+      const arrayBuffer = await readFileAsArrayBuffer(file);
+      showLoading(true, 'Descomprimiendo…', 20);
 
-    dbg('Passing to JSZip...');
     const zip = await JSZip.loadAsync(arrayBuffer);
-    dbg('JSZip loaded. Files: ' + Object.keys(zip.files).length);
     showLoading(true, 'Buscando imágenes…', 50);
 
     const imageExts = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
-    const allFiles = Object.values(zip.files);
-    dbg('All entries: ' + allFiles.map(f => f.name).slice(0,5).join(', '));
-    const entries = allFiles
+    const entries = Object.values(zip.files)
       .filter(f => !f.dir && imageExts.test(f.name))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 
-    dbg('Image entries found: ' + entries.length);
     if (!entries.length) {
       showLoading(false);
-      dbg('ERROR: no images found in zip');
-      alert('No se encontraron imágenes.\nArchivos en el zip: ' + allFiles.map(f=>f.name).join(', '));
+      alert('No se encontraron imágenes en el archivo.');
       return;
     }
 
@@ -579,8 +554,7 @@ async function loadCBZ(file) {
 
   } catch (err) {
     showLoading(false);
-    dbg('CATCH ERROR: ' + err.message + ' | ' + err.stack);
-    alert('Error: ' + err.message);
+    alert('Error al abrir el archivo:\n' + err.message);
     console.error(err);
   }
 }
