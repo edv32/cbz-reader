@@ -2,740 +2,606 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>CBZ Reader</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['DM Sans', 'sans-serif'],
+        mono: ['DM Mono', 'monospace'],
+      },
+      colors: {
+        base:    '#0a0a0f',
+        surface: '#13131a',
+        card:    '#1c1c28',
+        border:  '#2a2a3a',
+        muted:   '#4a4a6a',
+        sub:     '#8888aa',
+        text:    '#e8e8f0',
+        accent:  '#6c63ff',
+        'accent-dim': '#6c63ff33',
+      },
+      backdropBlur: { xs: '4px' },
+    }
+  }
+}
+</script>
+
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap');
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  body { height: 100dvh; overflow: hidden; background: #0a0a0f; font-family: 'DM Sans', sans-serif; }
 
-  :root {
-    --ink: #0a0a0a;
-    --paper: #f0ebe0;
-    --accent: #e63312;
-    --accent2: #f5a623;
-    --muted: #8a8070;
-    --panel-bg: #1a1a1a;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--ink);
-    color: var(--paper);
-    font-family: 'Space Mono', monospace;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* ─── HALFTONE BACKGROUND ─── */
+  /* Subtle grain texture */
   body::before {
     content: '';
-    position: fixed;
-    inset: 0;
-    background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px);
-    background-size: 20px 20px;
-    opacity: 0.4;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* ─── HEADER ─── */
-  header {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 32px;
-    border-bottom: 3px solid var(--accent);
-    background: var(--ink);
-  }
-
-  .logo {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2.4rem;
-    letter-spacing: 4px;
-    color: var(--paper);
-    line-height: 1;
-  }
-  .logo span { color: var(--accent); }
-
-  .header-info {
-    font-size: 0.65rem;
-    color: var(--muted);
-    text-align: right;
-    line-height: 1.6;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  /* ─── DROP ZONE ─── */
-  #drop-zone {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: calc(100vh - 80px);
-    gap: 24px;
-    padding: 40px;
-    transition: all 0.2s;
-  }
-
-  .drop-frame {
-    border: 3px dashed var(--accent);
-    padding: 60px 80px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    position: relative;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: rgba(230,51,18,0.04);
-  }
-  .drop-frame::before, .drop-frame::after {
-    content: '';
-    position: absolute;
-    width: 24px; height: 24px;
-    border-color: var(--accent2);
-    border-style: solid;
-  }
-  .drop-frame::before { top: -3px; left: -3px; border-width: 3px 0 0 3px; }
-  .drop-frame::after  { bottom: -3px; right: -3px; border-width: 0 3px 3px 0; }
-
-  .drop-frame:hover, .drop-frame.dragging {
-    background: rgba(230,51,18,0.10);
-    border-color: var(--accent2);
-  }
-
-  .drop-icon {
-    font-size: 4rem;
-    line-height: 1;
-    filter: grayscale(0.2);
-  }
-
-  .drop-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2rem;
-    letter-spacing: 3px;
-    color: var(--paper);
-  }
-
-  .drop-sub {
-    font-size: 0.7rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    text-align: center;
-  }
-
-  .btn-open {
-    background: var(--accent);
-    color: var(--paper);
-    border: none;
-    padding: 12px 32px;
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.2rem;
-    letter-spacing: 3px;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
-    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  }
-  .btn-open:hover { background: var(--accent2); color: var(--ink); transform: scale(1.04); }
-
-  #file-input { display: none; }
-
-  /* ─── READER ─── */
-  #reader {
-    display: none;
-    position: relative;
-    z-index: 10;
-    flex-direction: column;
-    min-height: 100vh;
-  }
-  #reader.active { display: flex; }
-
-  /* Toolbar */
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 20px;
-    background: var(--panel-bg);
-    border-bottom: 2px solid #2a2a2a;
-    flex-wrap: wrap;
-  }
-
-  .comic-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.4rem;
-    letter-spacing: 2px;
-    color: var(--accent);
-    flex: 1;
-    min-width: 120px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .page-counter {
-    font-size: 0.75rem;
-    color: var(--muted);
-    white-space: nowrap;
-    letter-spacing: 1px;
-  }
-  .page-counter strong { color: var(--paper); }
-
-  .tb-btn {
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
-    color: var(--paper);
-    width: 36px; height: 36px;
-    cursor: pointer;
-    font-size: 1rem;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.15s;
-    flex-shrink: 0;
-  }
-  .tb-btn:hover { background: var(--accent); border-color: var(--accent); }
-  .tb-btn:disabled { opacity: 0.3; cursor: default; }
-  .tb-btn:disabled:hover { background: #2a2a2a; border-color: #3a3a3a; }
-
-  .tb-separator { width: 1px; height: 24px; background: #3a3a3a; flex-shrink: 0; }
-
-  /* Zoom selector */
-  .zoom-select {
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
-    color: var(--paper);
-    font-family: 'Space Mono', monospace;
-    font-size: 0.7rem;
-    padding: 6px 8px;
-    cursor: pointer;
-  }
-
-  /* View mode */
-  .mode-btn {
-    background: #2a2a2a;
-    border: 1px solid #3a3a3a;
-    color: var(--muted);
-    padding: 6px 12px;
-    cursor: pointer;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.65rem;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    transition: all 0.15s;
-  }
-  .mode-btn.active { background: var(--accent); border-color: var(--accent); color: var(--paper); }
-
-  /* Main reading area */
-  .reading-area {
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 24px;
-    gap: 12px;
-    background: #111;
-    position: relative;
-  }
-
-  .page-wrap {
-    position: relative;
-    flex-shrink: 0;
-    box-shadow: 6px 6px 0 var(--accent), 0 0 40px rgba(0,0,0,0.8);
-  }
-
-  .page-wrap img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    image-rendering: high-quality;
-  }
-
-  /* Page number badge */
-  .page-badge {
-    position: absolute;
-    bottom: -28px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.6rem;
-    color: var(--muted);
-    white-space: nowrap;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  /* Navigation overlays */
-  .nav-overlay {
-    position: fixed;
-    top: 80px; bottom: 0;
-    width: 80px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    z-index: 20;
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  .nav-overlay:hover { opacity: 1; }
-  .nav-overlay.left { left: 0; background: linear-gradient(to right, rgba(230,51,18,0.25), transparent); }
-  .nav-overlay.right { right: 0; background: linear-gradient(to left, rgba(230,51,18,0.25), transparent); }
-  .nav-arrow {
-    font-size: 2rem;
-    color: var(--paper);
-    text-shadow: 0 0 10px var(--accent);
-  }
-
-  /* Thumbnail strip */
-  .thumb-strip {
-    background: var(--panel-bg);
-    border-top: 2px solid #2a2a2a;
-    padding: 8px 12px;
-    overflow-x: auto;
-    display: flex;
-    gap: 6px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--accent) #1a1a1a;
-  }
-
-  .thumb {
-    flex-shrink: 0;
-    width: 48px; height: 64px;
-    object-fit: cover;
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
     opacity: 0.5;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.15s;
-  }
-  .thumb:hover { opacity: 0.85; }
-  .thumb.active { opacity: 1; border-color: var(--accent); }
-  .thumb-placeholder {
-    width: 48px; height: 64px;
-    background: #2a2a2a;
-    border: 2px solid transparent;
-    cursor: pointer;
-    flex-shrink: 0;
-    opacity: 0.4;
   }
 
-  /* Loading overlay */
-  #loading {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(10,10,10,0.92);
-    z-index: 100;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
+  /* Ambient glow behind drop zone */
+  .glow-accent {
+    box-shadow: 0 0 80px 20px #6c63ff18, 0 0 0 1px #6c63ff22;
   }
-  #loading.show { display: flex; }
 
-  .loading-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 2rem;
-    letter-spacing: 4px;
-    color: var(--accent);
+  /* Glassmorphism card */
+  .glass {
+    background: rgba(28, 28, 40, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(108, 99, 255, 0.15);
   }
-  .loading-bar-wrap {
-    width: 300px;
-    height: 6px;
-    background: #2a2a2a;
+
+  /* Gradient border on focus */
+  .drop-active { border-color: #6c63ff88 !important; }
+
+  /* Progress bar glow */
+  .prog-glow { box-shadow: 0 0 12px #6c63ff88; }
+
+  /* Smooth toolbar slide */
+  #toolbar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  #toolbar.off { transform: translateY(-110%); }
+
+  /* 3-slot swipe */
+  #page-container {
+    display: flex; width: 100%; height: 100%;
+    transform: translateX(-100%);
+    will-change: transform;
+  }
+  .pslot {
+    flex-shrink: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
     overflow: hidden;
   }
-  .loading-bar {
-    height: 100%;
-    background: var(--accent);
-    width: 0%;
-    transition: width 0.1s;
-  }
-  .loading-msg {
-    font-size: 0.65rem;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
+  .pslot img {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain; display: block;
+    user-select: none; -webkit-user-select: none; pointer-events: none;
   }
 
-  /* Keyboard hint */
-  .kb-hint {
-    position: fixed;
-    bottom: 90px;
-    right: 16px;
-    z-index: 5;
-    font-size: 0.55rem;
-    color: #333;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    line-height: 2;
-    text-align: right;
+  /* Pill fade */
+  #page-pill { transition: opacity 0.4s ease; }
+
+  /* Thumbnail strip scrollbar */
+  #thumb-strip { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #thumb-strip::-webkit-scrollbar { display: none; }
+
+  /* Thumbnail hover */
+  .thumb { transition: opacity 0.2s, transform 0.2s, border-color 0.2s; }
+  .thumb:hover { transform: scaleY(1.05); opacity: 0.85 !important; }
+
+  /* Loading spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 0.9s linear infinite; }
+
+  /* Loading bar shimmer */
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to   { background-position:  200% 0; }
+  }
+  .shimmer {
+    background: linear-gradient(90deg, #6c63ff 0%, #a78bfa 50%, #6c63ff 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
   }
 
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #111; }
-  ::-webkit-scrollbar-thumb { background: var(--accent); }
-
-  @media (max-width: 600px) {
-    .drop-frame { padding: 32px 24px; }
-    header { padding: 12px 16px; }
-    .logo { font-size: 1.8rem; }
-    .toolbar { padding: 8px 12px; gap: 8px; }
-    .nav-overlay { width: 48px; }
+  /* Drop zone enter animation */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
+  .fade-up { animation: fadeUp 0.5s ease both; }
+  .fade-up-2 { animation: fadeUp 0.5s 0.1s ease both; }
+  .fade-up-3 { animation: fadeUp 0.5s 0.2s ease both; }
+
+  /* btn style shortcut */
+  .tbtn {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px;
+    background: transparent; border: 1px solid #2a2a3a;
+    color: #8888aa; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+  }
+  .tbtn:hover { background: #6c63ff22; border-color: #6c63ff66; color: #e8e8f0; }
+  .tbtn:disabled { opacity: 0.25; pointer-events: none; }
+  .tbtn.active { background: #6c63ff; border-color: #6c63ff; color: #fff; }
 </style>
 </head>
-<body>
 
-<!-- ─── HEADER ─── -->
-<header>
-  <div class="logo">CBZ<span>.</span>Reader</div>
-  <div class="header-info">
-    Comic Book Archive Reader<br>
-    Drag &amp; Drop · Keyboard Nav
+<body class="bg-base text-text font-sans overflow-hidden">
+
+<!-- ═══════════════════════════
+     DROP ZONE
+═══════════════════════════ -->
+<div id="drop-zone" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 gap-8">
+
+  <!-- Background orbs -->
+  <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-accent/5 blur-3xl pointer-events-none"></div>
+  <div class="absolute bottom-1/3 left-1/4 w-64 h-64 rounded-full bg-violet-500/5 blur-3xl pointer-events-none"></div>
+
+  <!-- Logo -->
+  <div class="fade-up text-center relative z-10">
+    <div class="text-3xl font-semibold tracking-tight text-text">
+      CBZ<span class="text-accent">·</span>Reader
+    </div>
+    <div class="text-xs text-sub mt-1 tracking-widest font-mono uppercase">Comic Book Archive</div>
   </div>
-</header>
 
-<!-- ─── DROP ZONE ─── -->
-<div id="drop-zone">
-  <label class="drop-frame" id="drop-frame" for="file-input">
-    <div class="drop-icon">📚</div>
-    <div class="drop-title">Abre tu cómic</div>
-    <div class="drop-sub">Arrastra un archivo .cbz aquí<br>o toca aquí para seleccionar</div>
-    <div class="btn-open">Seleccionar archivo</div>
-    <div id="ios-hint" style="display:none; font-size:0.6rem; color:var(--muted); text-align:center; margin-top:-8px; letter-spacing:1px; text-transform:uppercase;">
-      En iPhone: elige "Archivos" para buscar tu .cbz
+  <!-- Drop card -->
+  <label for="file-input"
+    id="drop-label"
+    class="fade-up-2 glass glow-accent relative z-10 w-full max-w-sm rounded-2xl p-10
+           flex flex-col items-center gap-5 cursor-pointer
+           border border-border hover:border-accent/40 transition-all duration-300 group">
+
+    <!-- Icon -->
+    <div class="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center
+                group-hover:bg-accent/20 group-hover:scale-105 transition-all duration-300">
+      <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25"/>
+      </svg>
+    </div>
+
+    <!-- Text -->
+    <div class="text-center">
+      <p class="font-medium text-text text-base">Abre tu cómic</p>
+      <p class="text-sm text-sub mt-1">Arrastra un .cbz o toca para seleccionar</p>
+      <p id="ios-hint" class="hidden text-xs text-accent mt-2">
+        iPhone: elige "Archivos" en el menú
+      </p>
+    </div>
+
+    <!-- Button -->
+    <div class="w-full bg-accent hover:bg-violet-500 transition-colors text-white text-sm font-medium
+                rounded-xl px-6 py-3 text-center">
+      Seleccionar archivo
+    </div>
+
+    <!-- Swipe hint -->
+    <div class="flex items-center gap-2 text-muted text-xs">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
+      </svg>
+      <span class="font-mono tracking-wider">SWIPE PARA NAVEGAR</span>
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+      </svg>
     </div>
   </label>
-  <input type="file" id="file-input" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+
+  <input type="file" id="file-input" class="absolute w-px h-px opacity-0 pointer-events-none">
 </div>
 
-<!-- ─── READER ─── -->
-<div id="reader">
+
+<!-- ═══════════════════════════
+     READER
+═══════════════════════════ -->
+<div id="reader" class="hidden fixed inset-0 z-40 flex-col bg-base">
+
   <!-- Toolbar -->
-  <div class="toolbar">
-    <button class="tb-btn" id="btn-back" title="Volver" onclick="closeComic()">✕</button>
-    <div class="tb-separator"></div>
-    <div class="comic-title" id="comic-title">—</div>
-    <div class="page-counter"><strong id="cur-page">1</strong> / <span id="total-pages">?</span></div>
-    <div class="tb-separator"></div>
-    <button class="tb-btn" id="btn-first" title="Primera página" onclick="goToPage(0)">⏮</button>
-    <button class="tb-btn" id="btn-prev" title="Anterior (←)" onclick="prevPage()">◀</button>
-    <button class="tb-btn" id="btn-next" title="Siguiente (→)" onclick="nextPage()">▶</button>
-    <button class="tb-btn" id="btn-last" title="Última página" onclick="goToPage(pages.length-1)">⏭</button>
-    <div class="tb-separator"></div>
-    <button class="mode-btn active" id="mode-single" onclick="setMode('single')">Una</button>
-    <button class="mode-btn" id="mode-double" onclick="setMode('double')">Dos</button>
-    <div class="tb-separator"></div>
-    <select class="zoom-select" id="zoom-select" onchange="setZoom(this.value)">
-      <option value="fit" selected>Ajustar</option>
-      <option value="width">Ancho</option>
-      <option value="75">75%</option>
-      <option value="100">100%</option>
-      <option value="125">125%</option>
-      <option value="150">150%</option>
-      <option value="200">200%</option>
-    </select>
+  <div id="toolbar"
+    class="relative z-10 flex items-center gap-2 px-3 py-2 flex-shrink-0
+           bg-surface/90 border-b border-border backdrop-blur-sm">
+
+    <!-- Close -->
+    <button onclick="closeComic()" class="tbtn" title="Cerrar">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+
+    <div class="w-px h-5 bg-border"></div>
+
+    <!-- Title -->
+    <span id="comic-title" class="text-sm font-medium text-text flex-1 min-w-0 truncate"></span>
+
+    <!-- Counter -->
+    <span class="font-mono text-xs text-sub whitespace-nowrap flex-shrink-0">
+      <span id="cur-page" class="text-accent font-medium">1</span>
+      <span class="mx-0.5">/</span>
+      <span id="total-pages">?</span>
+    </span>
+
+    <div class="w-px h-5 bg-border"></div>
+
+    <!-- Nav -->
+    <button id="btn-first" onclick="goToPage(0)"             class="tbtn">⏮</button>
+    <button id="btn-prev"  onclick="prevPage()"               class="tbtn">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
+      </svg>
+    </button>
+    <button id="btn-next"  onclick="nextPage()"               class="tbtn">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+      </svg>
+    </button>
+    <button id="btn-last"  onclick="goToPage(pages.length-1)" class="tbtn">⏭</button>
+
+    <div class="w-px h-5 bg-border"></div>
+
+    <!-- View mode -->
+    <button id="mode-1" onclick="setMode('single')" class="tbtn active text-xs font-mono px-2 w-auto">1P</button>
+    <button id="mode-2" onclick="setMode('double')" class="tbtn text-xs font-mono px-2 w-auto">2P</button>
   </div>
 
   <!-- Reading area -->
-  <div class="reading-area" id="reading-area">
-    <!-- pages render here -->
+  <div id="reading-area" class="flex-1 relative overflow-hidden bg-[#080810]">
+
+    <!-- Page swipe strip -->
+    <div id="page-container">
+      <div class="pslot" id="slot-prev"></div>
+      <div class="pslot" id="slot-cur"></div>
+      <div class="pslot" id="slot-next"></div>
+    </div>
+
+    <!-- Tap zones -->
+    <div onclick="prevPage()" class="absolute top-0 bottom-0 left-0 w-[22%] z-10 cursor-pointer"></div>
+    <div onclick="nextPage()" class="absolute top-0 bottom-0 right-0 w-[22%] z-10 cursor-pointer"></div>
+
+    <!-- Toolbar tab -->
+    <button id="menu-tab" onclick="toggleToolbar()"
+      class="absolute top-0 left-1/2 -translate-x-1/2 z-20
+             bg-surface/80 backdrop-blur-sm border border-border border-t-0
+             text-sub hover:text-text text-[0.6rem] font-mono tracking-widest uppercase
+             px-5 py-1 rounded-b-lg transition-colors">
+      hide
+    </button>
+
+    <!-- Page pill -->
+    <div id="page-pill"
+      class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0
+             glass rounded-full px-4 py-1.5
+             text-xs font-mono text-text whitespace-nowrap">
+    </div>
   </div>
 
-  <!-- Navigation overlays -->
-  <div class="nav-overlay left" onclick="prevPage()"><div class="nav-arrow">‹</div></div>
-  <div class="nav-overlay right" onclick="nextPage()"><div class="nav-arrow">›</div></div>
-
   <!-- Thumbnail strip -->
-  <div class="thumb-strip" id="thumb-strip"></div>
+  <div id="thumb-strip"
+    class="flex-shrink-0 flex gap-1 p-2 overflow-x-auto overflow-y-hidden
+           bg-surface border-t border-border"
+    style="height:64px">
+  </div>
 </div>
 
-<!-- ─── LOADING ─── -->
-<div id="loading">
-  <div class="loading-title">Cargando cómic…</div>
-  <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
-  <div class="loading-msg" id="loading-msg">Leyendo archivo…</div>
+
+<!-- ═══════════════════════════
+     LOADING SCREEN
+═══════════════════════════ -->
+<div id="loading-screen"
+  class="hidden fixed inset-0 z-[100] bg-base/95 backdrop-blur-md
+         flex flex-col items-center justify-center gap-6">
+
+  <!-- Spinner -->
+  <div class="w-12 h-12 rounded-full border-2 border-border border-t-accent spinner"></div>
+
+  <!-- Title -->
+  <div class="text-center">
+    <div class="text-base font-medium text-text" id="load-title">Abriendo cómic</div>
+    <div class="text-xs text-sub mt-1 font-mono" id="load-msg">leyendo archivo...</div>
+  </div>
+
+  <!-- Progress -->
+  <div class="w-[min(280px,75vw)] h-1 bg-surface rounded-full overflow-hidden">
+    <div id="prog" class="h-full shimmer prog-glow rounded-full" style="width:0%; transition:width 0.2s"></div>
+  </div>
 </div>
 
-<!-- ─── KEYBOARD HINT ─── -->
-<div class="kb-hint" id="kb-hint" style="display:none">
-  ← → navegar<br>
-  Home / End primera / última
-</div>
 
 <script>
-let pages = [];
-let currentPage = 0;
-let viewMode = 'single';
-let zoomMode = 'fit';
+// ── STATE ──
+let pages = [], zipEntries = [], currentPage = 0, viewMode = 'single';
+let pillTimer = null, toolbarOn = true;
 
-// ─── iOS DETECTION ───
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-if (isIOS) {
-  document.getElementById('ios-hint').style.display = 'block';
-  // No accept filter on iOS - let user pick any file from Files app
-}
+// ── iOS ──
+if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream)
+  document.getElementById('ios-hint').classList.remove('hidden');
 
-// ─── FILE INPUT ───
+// ── FILE INPUT ──
 document.getElementById('file-input').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (file) loadCBZ(file);
+  if (e.target.files[0]) loadCBZ(e.target.files[0]);
 });
 
-// ─── DRAG & DROP ───
-const dropFrame = document.getElementById('drop-frame');
-const dropZone = document.getElementById('drop-zone');
+const dz = document.getElementById('drop-zone');
+const label = document.getElementById('drop-label');
 
-['dragenter','dragover'].forEach(ev => {
-  dropZone.addEventListener(ev, e => { e.preventDefault(); dropFrame.classList.add('dragging'); });
+dz.addEventListener('dragover', e => { e.preventDefault(); label.classList.add('drop-active'); });
+dz.addEventListener('dragleave', () => label.classList.remove('drop-active'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  label.classList.remove('drop-active');
+  if (e.dataTransfer.files[0]) loadCBZ(e.dataTransfer.files[0]);
 });
-['dragleave','drop'].forEach(ev => {
-  dropZone.addEventListener(ev, e => { e.preventDefault(); dropFrame.classList.remove('dragging'); });
-});
-dropZone.addEventListener('drop', e => {
-  const file = e.dataTransfer.files[0];
-  if (file) loadCBZ(file);
-});
-// dropFrame click handled natively via <label for='file-input'>
 
-// ─── LOAD CBZ ───
-let zipEntries = [];
-
+// ── LOAD CBZ ──
 async function loadCBZ(file) {
-  showLoading(true, 'Leyendo archivo…', 0);
+  showLoading(true, 'Abriendo cómic', 'leyendo archivo...', 0);
   try {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      showLoading(true, 'Descomprimiendo…', 20);
+    const buf = await toArrayBuffer(file);
+    showLoading(true, 'Abriendo cómic', 'descomprimiendo...', 25);
+    const zip = await JSZip.loadAsync(buf);
+    showLoading(true, 'Abriendo cómic', 'buscando páginas...', 55);
 
-    const zip = await JSZip.loadAsync(arrayBuffer);
-    showLoading(true, 'Buscando imágenes…', 50);
-
-    const imageExts = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
+    const imgRE = /\.(jpe?g|png|gif|webp|bmp|avif)$/i;
     const entries = Object.values(zip.files)
-      .filter(f => !f.dir && imageExts.test(f.name))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+      .filter(f => !f.dir && imgRE.test(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-    if (!entries.length) {
-      showLoading(false);
-      alert('No se encontraron imágenes en el archivo.');
-      return;
-    }
+    if (!entries.length) { showLoading(false); alert('No hay imágenes en el archivo.'); return; }
 
     zipEntries = entries;
     pages = new Array(entries.length).fill(null);
 
-    const thumbStrip = document.getElementById('thumb-strip');
-    thumbStrip.innerHTML = '';
+    // Thumbnail placeholders
+    const strip = document.getElementById('thumb-strip');
+    strip.innerHTML = '';
     for (let i = 0; i < entries.length; i++) {
       const ph = document.createElement('div');
-      ph.className = 'thumb thumb-placeholder';
+      ph.className = 'thumb flex-shrink-0 rounded bg-card border border-border opacity-30 cursor-pointer';
+      ph.style.cssText = 'width:38px;height:48px;';
       ph.dataset.page = i;
-      ph.title = `Página ${i+1}`;
       ph.addEventListener('click', () => goToPage(i));
-      thumbStrip.appendChild(ph);
+      strip.appendChild(ph);
     }
 
-    document.getElementById('comic-title').textContent = file.name.replace(/\.cbz$/i,'').replace(/_/g,' ');
+    document.getElementById('comic-title').textContent =
+      file.name.replace(/\.cbz$/i, '').replace(/[_-]/g, ' ');
     document.getElementById('total-pages').textContent = entries.length;
 
+    showLoading(true, 'Abriendo cómic', 'cargando páginas...', 82);
+    await preload(0, Math.min(4, entries.length - 1));
     showLoading(false);
-    document.getElementById('drop-zone').style.display = 'none';
-    document.getElementById('reader').classList.add('active');
-    document.getElementById('kb-hint').style.display = 'block';
-    currentPage = 0;
 
-    await preloadPages(0, Math.min(3, entries.length - 1));
+    dz.classList.add('hidden');
+    const reader = document.getElementById('reader');
+    reader.classList.remove('hidden');
+    reader.classList.add('flex');
+    currentPage = 0;
     renderPage();
 
   } catch (err) {
     showLoading(false);
-    alert('Error al abrir el archivo:\n' + err.message);
+    alert('Error al abrir: ' + err.message);
     console.error(err);
   }
 }
 
-function readFileAsArrayBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
-    reader.readAsArrayBuffer(file);
+function toArrayBuffer(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = () => rej(new Error('No se pudo leer el archivo'));
+    r.readAsArrayBuffer(file);
   });
 }
 
-function guessMime(filename) {
-  if (/\.png$/i.test(filename)) return 'image/png';
-  if (/\.gif$/i.test(filename)) return 'image/gif';
-  if (/\.webp$/i.test(filename)) return 'image/webp';
+function guessMime(name) {
+  if (/\.png$/i.test(name))  return 'image/png';
+  if (/\.gif$/i.test(name))  return 'image/gif';
+  if (/\.webp$/i.test(name)) return 'image/webp';
   return 'image/jpeg';
 }
 
-async function preloadPages(from, to) {
+async function preload(from, to) {
   for (let i = from; i <= to; i++) {
-    if (pages[i] === null && zipEntries[i]) {
-      try {
-        const blob = await zipEntries[i].async('blob');
-        const mimeType = guessMime(zipEntries[i].name);
-        const typedBlob = new Blob([blob], { type: mimeType });
-        pages[i] = URL.createObjectURL(typedBlob);
-
-        const thumbEl = document.querySelector(`[data-page="${i}"]`);
-        if (thumbEl && thumbEl.tagName !== 'IMG') {
-          const img = document.createElement('img');
-          img.src = pages[i];
-          img.className = 'thumb' + (i === currentPage ? ' active' : '');
-          img.dataset.page = i;
-          img.title = `Página ${i+1}`;
-          img.addEventListener('click', () => goToPage(i));
-          thumbEl.replaceWith(img);
-        }
-      } catch(e) {
-        console.warn('Error loading page', i, e);
-        pages[i] = '';
-      }
-    }
+    if (pages[i] !== null || !zipEntries[i]) continue;
+    try {
+      const blob = await zipEntries[i].async('blob');
+      pages[i] = URL.createObjectURL(new Blob([blob], { type: guessMime(zipEntries[i].name) }));
+      upgradeThumbnail(i);
+    } catch { pages[i] = ''; }
   }
 }
 
-// ─── RENDER ───
-async function renderPage() {
-  // Ensure current pages are loaded
+function upgradeThumbnail(i) {
+  const el = document.querySelector(`[data-page="${i}"]`);
+  if (!el || el.tagName === 'IMG') return;
+  const img = document.createElement('img');
+  img.src = pages[i];
+  img.className = 'thumb flex-shrink-0 rounded border-2 border-transparent opacity-40 cursor-pointer object-cover';
+  img.style.cssText = 'width:38px;height:48px;';
+  img.dataset.page = i;
+  img.addEventListener('click', () => goToPage(i));
+  el.replaceWith(img);
+}
+
+// ── RENDER ──
+function renderPage() {
   const step = viewMode === 'double' ? 2 : 1;
-  await preloadPages(currentPage, Math.min(currentPage + step + 2, pages.length - 1));
+  fillSlot('slot-prev', currentPage - step);
+  fillSlot('slot-cur',  currentPage);
+  fillSlot('slot-next', currentPage + step < pages.length ? currentPage + step : -1);
 
-  const area = document.getElementById('reading-area');
-  area.innerHTML = '';
+  const c = document.getElementById('page-container');
+  c.style.transition = 'none';
+  c.style.transform  = 'translateX(-100%)';
 
-  const pagesToShow = viewMode === 'double'
-    ? [currentPage, currentPage + 1].filter(i => i < pages.length)
-    : [currentPage];
+  document.getElementById('cur-page').textContent   = currentPage + 1;
+  document.getElementById('btn-prev').disabled  = currentPage === 0;
+  document.getElementById('btn-first').disabled = currentPage === 0;
+  document.getElementById('btn-next').disabled  = currentPage >= pages.length - 1;
+  document.getElementById('btn-last').disabled  = currentPage >= pages.length - 1;
 
-  pagesToShow.forEach((pi, idx) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'page-wrap';
+  // Thumbnails
+  document.querySelectorAll('.thumb[data-page]').forEach(el => {
+    const pi = +el.dataset.page;
+    const active = viewMode === 'double'
+      ? (pi === currentPage || pi === currentPage + 1)
+      : pi === currentPage;
+    if (el.tagName === 'IMG') {
+      el.style.opacity = active ? '1' : '0.4';
+      el.style.borderColor = active ? '#6c63ff' : 'transparent';
+    } else {
+      el.style.opacity = active ? '0.8' : '0.3';
+    }
+  });
 
+  const at = document.querySelector('.thumb[data-page]');
+  const activeTh = [...document.querySelectorAll('.thumb[data-page]')]
+    .find(el => +el.dataset.page === currentPage);
+  if (activeTh) activeTh.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+
+  preload(currentPage, Math.min(currentPage + 6, pages.length - 1));
+  showPill();
+}
+
+function fillSlot(id, pi) {
+  const slot = document.getElementById(id);
+  slot.innerHTML = '';
+  if (pi < 0 || pi >= pages.length) return;
+
+  if (viewMode === 'double') {
+    [pi, pi + 1].forEach(idx => {
+      if (idx < pages.length && pages[idx]) {
+        const img = document.createElement('img');
+        img.src = pages[idx];
+        img.style.cssText = 'max-width:50%;max-height:100%;object-fit:contain;';
+        slot.appendChild(img);
+      }
+    });
+  } else {
     if (pages[pi]) {
       const img = document.createElement('img');
       img.src = pages[pi];
-      img.alt = `Página ${pi + 1}`;
-      applyZoom(img);
-      wrap.appendChild(img);
+      slot.appendChild(img);
     } else {
-      const placeholder = document.createElement('div');
-      placeholder.style.cssText = 'width:400px;height:560px;display:flex;align-items:center;justify-content:center;color:#444;font-size:0.8rem;letter-spacing:2px;';
-      placeholder.textContent = 'CARGANDO…';
-      wrap.appendChild(placeholder);
-    }
-
-    const badge = document.createElement('div');
-    badge.className = 'page-badge';
-    badge.textContent = `Página ${pi + 1}`;
-
-    wrap.appendChild(badge);
-    area.appendChild(wrap);
-  });
-
-  area.scrollTop = 0;
-
-  // Update UI
-  document.getElementById('cur-page').textContent = currentPage + 1;
-  document.getElementById('btn-prev').disabled = currentPage === 0;
-  document.getElementById('btn-first').disabled = currentPage === 0;
-  document.getElementById('btn-next').disabled = currentPage >= pages.length - 1;
-  document.getElementById('btn-last').disabled = currentPage >= pages.length - 1;
-
-  // Thumbnails
-  document.querySelectorAll('.thumb').forEach(t => {
-    const pi = parseInt(t.dataset.page);
-    t.classList.toggle('active', pi === currentPage || (viewMode === 'double' && pi === currentPage + 1));
-  });
-
-  // Scroll thumb into view
-  const activeThumbs = document.querySelectorAll('.thumb.active');
-  if (activeThumbs[0]) activeThumbs[0].scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
-}
-
-function applyZoom(img) {
-  if (zoomMode === 'fit') {
-    img.style.maxHeight = (window.innerHeight - 180) + 'px';
-    img.style.width = 'auto';
-    img.style.maxWidth = '100%';
-  } else if (zoomMode === 'width') {
-    img.style.width = '100%';
-    img.style.maxHeight = 'none';
-    img.style.maxWidth = 'none';
-  } else {
-    const pct = parseInt(zoomMode);
-    img.style.width = 'auto';
-    img.style.maxWidth = 'none';
-    img.style.maxHeight = 'none';
-    img.style.height = 'auto';
-    // Use a fixed base height approach
-    img.onload = () => {
-      img.style.width = Math.round(img.naturalWidth * pct / 100) + 'px';
-    };
-    if (img.complete && img.naturalWidth) {
-      img.style.width = Math.round(img.naturalWidth * pct / 100) + 'px';
+      const ph = document.createElement('div');
+      ph.className = 'flex items-center justify-center text-muted text-xs font-mono tracking-widest';
+      ph.style.cssText = 'width:280px;height:400px;';
+      ph.textContent = 'cargando...';
+      slot.appendChild(ph);
     }
   }
 }
 
-// ─── NAVIGATION ───
+// ── NAVIGATION ──
 function nextPage() {
   const step = viewMode === 'double' ? 2 : 1;
-  if (currentPage + step <= pages.length - 1) {
-    currentPage = Math.min(currentPage + step, pages.length - 1);
-    renderPage();
-  }
+  if (currentPage + step > pages.length - 1) return;
+  animSwipe('left', () => { currentPage = Math.min(currentPage + step, pages.length - 1); renderPage(); });
 }
 function prevPage() {
+  if (currentPage === 0) return;
   const step = viewMode === 'double' ? 2 : 1;
-  if (currentPage > 0) {
-    currentPage = Math.max(currentPage - step, 0);
-    renderPage();
-  }
+  animSwipe('right', () => { currentPage = Math.max(currentPage - step, 0); renderPage(); });
 }
 function goToPage(i) {
-  currentPage = Math.max(0, Math.min(i, pages.length - 1));
-  renderPage();
+  if (i === currentPage) return;
+  animSwipe(i > currentPage ? 'left' : 'right', () => {
+    currentPage = Math.max(0, Math.min(i, pages.length - 1));
+    renderPage();
+  });
+}
+function animSwipe(dir, cb) {
+  const c = document.getElementById('page-container');
+  c.style.transition = 'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)';
+  c.style.transform  = dir === 'left' ? 'translateX(-200%)' : 'translateX(0%)';
+  setTimeout(() => { c.style.transition = 'none'; cb(); }, 330);
 }
 
-// ─── MODE & ZOOM ───
+// ── TOUCH SWIPE ──
+let tx0 = 0, ty0 = 0, dragging = false;
+const ra = document.getElementById('reading-area');
+
+ra.addEventListener('touchstart', e => {
+  tx0 = e.touches[0].clientX; ty0 = e.touches[0].clientY; dragging = false;
+}, { passive: true });
+
+ra.addEventListener('touchmove', e => {
+  const dx = e.touches[0].clientX - tx0, dy = e.touches[0].clientY - ty0;
+  if (!dragging && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) dragging = true;
+  if (dragging) {
+    const c = document.getElementById('page-container');
+    c.style.transition = 'none';
+    c.style.transform  = `translateX(calc(-100% + ${dx}px))`;
+  }
+}, { passive: true });
+
+ra.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - tx0;
+  if (!dragging) {
+    const cx = e.changedTouches[0].clientX, w = ra.offsetWidth;
+    if (cx > w * 0.22 && cx < w * 0.78) toggleToolbar();
+    return;
+  }
+  if      (dx < -ra.offsetWidth * 0.22) nextPage();
+  else if (dx >  ra.offsetWidth * 0.22) prevPage();
+  else {
+    const c = document.getElementById('page-container');
+    c.style.transition = 'transform 0.25s ease';
+    c.style.transform  = 'translateX(-100%)';
+  }
+}, { passive: true });
+
+// ── UI HELPERS ──
+function toggleToolbar() {
+  toolbarOn = !toolbarOn;
+  document.getElementById('toolbar').classList.toggle('off', !toolbarOn);
+  document.getElementById('menu-tab').textContent = toolbarOn ? 'hide' : 'show';
+}
+
+function showPill() {
+  const p = document.getElementById('page-pill');
+  p.textContent = `${currentPage + 1} / ${pages.length}`;
+  p.style.opacity = '1';
+  clearTimeout(pillTimer);
+  pillTimer = setTimeout(() => { p.style.opacity = '0'; }, 1800);
+}
+
 function setMode(m) {
   viewMode = m;
-  document.getElementById('mode-single').classList.toggle('active', m === 'single');
-  document.getElementById('mode-double').classList.toggle('active', m === 'double');
-  renderPage();
-}
-function setZoom(v) {
-  zoomMode = v;
+  document.getElementById('mode-1').classList.toggle('active', m === 'single');
+  document.getElementById('mode-2').classList.toggle('active', m === 'double');
   renderPage();
 }
 
-// ─── CLOSE ───
 function closeComic() {
-  pages.forEach(u => URL.revokeObjectURL(u));
-  pages = [];
-  document.getElementById('reader').classList.remove('active');
-  document.getElementById('drop-zone').style.display = 'flex';
-  document.getElementById('kb-hint').style.display = 'none';
+  pages.forEach(u => u && URL.revokeObjectURL(u));
+  pages = []; zipEntries = [];
+  const reader = document.getElementById('reader');
+  reader.classList.add('hidden'); reader.classList.remove('flex');
   document.getElementById('file-input').value = '';
+  dz.classList.remove('hidden');
 }
 
-// ─── LOADING ───
-function showLoading(show, msg = '', pct = 0) {
-  const el = document.getElementById('loading');
-  el.classList.toggle('show', show);
-  document.getElementById('loading-msg').textContent = msg;
-  document.getElementById('loading-bar').style.width = pct + '%';
+function showLoading(show, title = '', msg = '', pct = 0) {
+  const el = document.getElementById('loading-screen');
+  el.classList.toggle('hidden', !show);
+  el.classList.toggle('flex', show);
+  document.getElementById('load-title').textContent = title;
+  document.getElementById('load-msg').textContent   = msg;
+  document.getElementById('prog').style.width       = pct + '%';
 }
 
-// ─── KEYBOARD ───
+// ── KEYBOARD ──
 document.addEventListener('keydown', e => {
   if (!pages.length) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nextPage(); }
