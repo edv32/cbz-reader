@@ -402,16 +402,16 @@
 
 <!-- ─── DROP ZONE ─── -->
 <div id="drop-zone">
-  <div class="drop-frame" id="drop-frame">
+  <label class="drop-frame" id="drop-frame" for="file-input">
     <div class="drop-icon">📚</div>
     <div class="drop-title">Abre tu cómic</div>
-    <div class="drop-sub">Arrastra un archivo .cbz aquí<br>o haz clic para seleccionar</div>
-    <button class="btn-open" id="btn-open-file" onclick="document.getElementById('file-input').click()">Seleccionar archivo</button>
+    <div class="drop-sub">Arrastra un archivo .cbz aquí<br>o toca aquí para seleccionar</div>
+    <div class="btn-open">Seleccionar archivo</div>
     <div id="ios-hint" style="display:none; font-size:0.6rem; color:var(--muted); text-align:center; margin-top:-8px; letter-spacing:1px; text-transform:uppercase;">
-      En iPhone: toca y elige "Archivos" para buscar tu .cbz
+      En iPhone: elige "Archivos" para buscar tu .cbz
     </div>
-  </div>
-  <input type="file" id="file-input" accept=".cbz,.zip,application/zip,application/x-zip-compressed,application/octet-stream">
+  </label>
+  <input type="file" id="file-input" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
 </div>
 
 <!-- ─── READER ─── -->
@@ -478,7 +478,7 @@ let zoomMode = '100';
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 if (isIOS) {
   document.getElementById('ios-hint').style.display = 'block';
-  document.getElementById('file-input').removeAttribute('accept');
+  // No accept filter on iOS - let user pick any file from Files app
 }
 
 // ─── DEBUG LOG (visible on screen) ───
@@ -517,7 +517,7 @@ dropZone.addEventListener('drop', e => {
   const file = e.dataTransfer.files[0];
   if (file) loadCBZ(file);
 });
-dropFrame.addEventListener('click', () => document.getElementById('file-input').click());
+// dropFrame click handled natively via <label for='file-input'>
 
 // ─── LOAD CBZ ───
 let zipEntries = [];
