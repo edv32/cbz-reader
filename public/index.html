@@ -398,9 +398,12 @@
     <div class="drop-icon">📚</div>
     <div class="drop-title">Abre tu cómic</div>
     <div class="drop-sub">Arrastra un archivo .cbz aquí<br>o haz clic para seleccionar</div>
-    <button class="btn-open" onclick="document.getElementById('file-input').click()">Seleccionar archivo</button>
+    <button class="btn-open" id="btn-open-file" onclick="document.getElementById('file-input').click()">Seleccionar archivo</button>
+    <div id="ios-hint" style="display:none; font-size:0.6rem; color:var(--muted); text-align:center; margin-top:-8px; letter-spacing:1px; text-transform:uppercase;">
+      En iPhone: toca y elige "Archivos" para buscar tu .cbz
+    </div>
   </div>
-  <input type="file" id="file-input" accept=".cbz,.zip">
+  <input type="file" id="file-input" accept=".cbz,.zip,application/zip,application/x-zip-compressed,application/octet-stream">
 </div>
 
 <!-- ─── READER ─── -->
@@ -462,6 +465,14 @@ let pages = [];
 let currentPage = 0;
 let viewMode = 'single';
 let zoomMode = '100';
+
+// ─── iOS DETECTION ───
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+if (isIOS) {
+  document.getElementById('ios-hint').style.display = 'block';
+  // On iOS, remove the accept filter so Files app shows all files
+  document.getElementById('file-input').removeAttribute('accept');
+}
 
 // ─── FILE INPUT ───
 document.getElementById('file-input').addEventListener('change', e => {
